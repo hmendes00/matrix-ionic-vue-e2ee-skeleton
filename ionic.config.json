@@ -1,0 +1,7 @@
+{
+  "name": "ionic-matrix-skeleton",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "vue"
+}
