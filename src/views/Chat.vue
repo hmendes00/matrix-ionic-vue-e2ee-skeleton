@@ -12,7 +12,7 @@
         <ion-icon class="default-icon-size" :icon="ellipsisVertical"></ion-icon>
     </ion-header>
     <ion-content :class="{'no-scroll': isLoadingMore }" class="chat-conversation-wrapper" :scroll-events="true" @ionScrollEnd="scrolledToTop" @ionScroll="trackScroll">
-      <ion-spinner class="chat-spinner" name="crescent" v-if="!isReady"></ion-spinner>
+      <ion-spinner class="center-spinner" name="crescent" v-if="!isReady"></ion-spinner>
       <div class="chat-conversation" :class="{'no-scroll': isLoadingMore }" v-show="isReady">
         <ion-item class="message-item" v-for="(item,index) of roomEvents" :key="index" lines="none">
           <div class="message-wrapper" :class="{'my-message': IsMyMessage(item)}">
@@ -340,17 +340,6 @@ export default defineComponent({
   &::-webkit-scrollbar {
     display: none;
   }
-
-  .chat-spinner {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    /* bring your own prefixes */
-    transform: translate(-50%, -50%);
-    width: 50px;
-    height: 50px;
-  }
-
 }
 
 .message-item {

@@ -208,6 +208,6 @@ export const GetRoomAccountData = (roomId: string) => {
     return GetClient().getRoom(roomId).accountData;
 }
 
-export const GetVirtualRooms = (): VirtualRoomObjInterface[] => {
-    return GetClient().getRooms().map((room) => ({room, id: room.roomId }));
+export const GetRooms = (): Room[] => {
+    return GetClient().getRooms();
 }

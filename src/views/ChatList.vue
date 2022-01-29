@@ -5,13 +5,14 @@
         <ion-icon class="default-icon-size" :icon="menu"></ion-icon>
     </ion-header>
     <ion-searchbar debounce="500" @input="search"></ion-searchbar>
-    <ion-content class="ion-content">
+    <ion-content class="ion-content" @vnode-updated="updated">
+      <ion-spinner class="center-spinner" name="crescent" v-if="loadingRooms || !uiRendered"></ion-spinner>
       <ion-list>
-        <ion-item v-for="item of rooms" class="room-item" :key="item.room.roomId" @click="goToRoom(item.room)">
+        <ion-item v-for="room of rooms" class="room-item" :key="room.roomId" @click="goToRoom(room)">
           <ion-avatar slot="start">
-            <ion-img :src="GetRoomAvatar(item.room)" />
+            <ion-img :src="GetRoomAvatar(room)" />
           </ion-avatar>
-          <ion-label class="room-name">{{ item.room.name }}</ion-label>
+          <ion-label class="room-name">{{ room.name }}</ion-label>
         </ion-item>
       </ion-list>
     </ion-content>
@@ -21,12 +22,12 @@
 <script lang="ts">
 import { GetRoomAvatar } from '@/helpers/matrix';
 import router from '@/router';
-import { GetRoomAccountData, GetVirtualRooms, MatrixService, VirtualRoomObjInterface } from '@/services/matrix';
+import { GetRoomAccountData, GetRooms, MatrixService } from '@/services/matrix';
 import { ActiveItemsStore } from '@/store/active';
 import { IonAvatar, IonContent, IonHeader, IonIcon, IonImg, IonItem, IonLabel, IonList, IonPage, IonSearchbar } from '@ionic/vue';
 import { menu } from 'ionicons/icons';
 import { Room } from 'matrix-js-sdk';
-import { defineComponent, ref, watch } from 'vue';
+import { defineComponent, nextTick, ref, watch } from 'vue';
 
 export default defineComponent({
   name: 'Home',
@@ -43,14 +44,26 @@ export default defineComponent({
     IonIcon
   },
   setup() {
-    const rooms = ref(Array<VirtualRoomObjInterface>());
-    const searchedRooms = ref('');
+    const rooms = ref(Array<Room>());
+    const loadingRooms = ref(true);
+    const uiRendered = ref(false);
+
+    const updated = () => {
+      if(!loadingRooms.value) {
+        nextTick(() => {
+          uiRendered.value = true;
+        });
+      }
+    };
+    
     if(MatrixService.firstSyncDone.value) {
-      rooms.value = GetVirtualRooms();
+      rooms.value = GetRooms();
+      loadingRooms.value = false;
     } else {
       watch(MatrixService.firstSyncDone, (isSynced) => {
         if(isSynced) {
-          rooms.value = GetVirtualRooms();
+          rooms.value = GetRooms();
+          loadingRooms.value = false;
         }
       });
     }
@@ -77,7 +90,9 @@ export default defineComponent({
       goToRoom,
       GetRoomAvatar,
       search,
-      searchedRooms
+      loadingRooms,
+      uiRendered,
+      updated
     }
   }
 });
