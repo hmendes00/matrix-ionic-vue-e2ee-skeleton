@@ -4,25 +4,15 @@
         <ion-label >Ionic Matrix Skeleton</ion-label>
         <ion-icon class="default-icon-size" :icon="menu"></ion-icon>
     </ion-header>
-    <ion-searchbar debounce="500"></ion-searchbar>
+    <ion-searchbar debounce="500" @input="search"></ion-searchbar>
     <ion-content class="ion-content">
       <ion-list>
-        <RecycleScroller
-          class="scroller"
-          :items="rooms"
-          :item-size="80"
-          :min-item-size="80"
-        >
-          <template #default="{ item }">
-            <ion-item class="room-item" @click="goToRoom(item.room)">
-              <ion-avatar slot="start">
-                <ion-img :src="GetRoomAvatar(item.room)" />
-              </ion-avatar>
-              <ion-label>{{ item.room.name }}</ion-label>
-              
-            </ion-item>
-          </template>
-        </RecycleScroller>
+        <ion-item v-for="item of rooms" class="room-item" :key="item.room.roomId" @click="goToRoom(item.room)">
+          <ion-avatar slot="start">
+            <ion-img :src="GetRoomAvatar(item.room)" />
+          </ion-avatar>
+          <ion-label class="room-name">{{ item.room.name }}</ion-label>
+        </ion-item>
       </ion-list>
     </ion-content>
   </ion-page>
@@ -37,7 +27,6 @@ import { IonAvatar, IonContent, IonHeader, IonIcon, IonImg, IonItem, IonLabel, I
 import { menu } from 'ionicons/icons';
 import { Room } from 'matrix-js-sdk';
 import { defineComponent, ref, watch } from 'vue';
-import { RecycleScroller } from 'vue-virtual-scroller';
 
 export default defineComponent({
   name: 'Home',
@@ -51,11 +40,11 @@ export default defineComponent({
     IonPage,
     IonHeader,
     IonSearchbar,
-    IonIcon,
-    RecycleScroller
+    IonIcon
   },
   setup() {
     const rooms = ref(Array<VirtualRoomObjInterface>());
+    const searchedRooms = ref('');
     if(MatrixService.firstSyncDone.value) {
       rooms.value = GetVirtualRooms();
     } else {
@@ -70,13 +59,25 @@ export default defineComponent({
       ActiveItemsStore.room.value = room;
       router.push(`/chat/${ActiveItemsStore.room.value.roomId}`);
     };
+
+    const search = (event: any) => {
+      const items = document.querySelectorAll('ion-item');
+      requestAnimationFrame(() => {
+        items.forEach((item) => {
+          const shouldShow = (item.querySelector('.room-name')?.textContent || '').toLowerCase().includes(event.target.value);
+          item.style.display = shouldShow ? 'block' : 'none';
+        });
+      });
+    }
       
     return {
       rooms,
       menu,
       GetRoomAccountData,
       goToRoom,
-      GetRoomAvatar
+      GetRoomAvatar,
+      search,
+      searchedRooms
     }
   }
 });
