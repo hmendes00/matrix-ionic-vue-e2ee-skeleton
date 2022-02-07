@@ -1,11 +1,11 @@
-import { CreatePickleKey, crossSigningCallbacks } from '@/helpers/ssss';
+import { CreatePickleKey } from '@/helpers/ssss';
 import { createClient, ICreateClientOpts, MatrixClient, Room } from 'matrix-js-sdk';
 import { decryptAES, encryptAES, IEncryptedPayload } from 'matrix-js-sdk/lib/crypto/aes';
 import { ref, Ref } from 'vue';
 import { IdbLoad, IdbSave } from './../helpers/idb';
 import { GetPickleKey } from './../helpers/ssss';
 import ConfigService from './config';
-import { GenerateClientOptsEncryption, GetCryptoStore, PickleKeyToAesKey, SetupCryptoBasics } from './crypto';
+import { PickleKeyToAesKey, PrepareCryptoBasics, SetupCryptoBasics } from './crypto';
 import { LoggerService } from './logger';
 import { CreateIndexDBStore } from './store';
 
@@ -165,17 +165,15 @@ export const Login = async (username: string, password: string) => {
             await CreatePickleKey(MatrixService.getUserId(), MatrixService.getDeviceId())
         }
         MatrixService.isLoggedIn = true;
-        
+
         return Promise.resolve(true);
     } catch (error) {
         LoggerService.debug('Error when trying to login to mx', error);
         return Promise.reject('Could not login');
     } finally {
-        await GetCryptoStore().startup();
-        const clientOpts = await GenerateClientOptsEncryption(GetClient(), MatrixService.getDeviceId());
-        Object.assign(clientOpts.cryptoCallbacks, crossSigningCallbacks);
+        const clientOpts = await PrepareCryptoBasics(GetClient(), MatrixService.getDeviceId());
         CreateOrUpdateClient(clientOpts);
-        await SetupCryptoBasics(GetClient(), MatrixService.getDeviceId());
+        await SetupCryptoBasics(GetClient(), true);
         await MatrixService.cacheAccessToken(GetClient().getAccessToken());
     }
 }
@@ -211,3 +209,7 @@ export const GetRoomAccountData = (roomId: string) => {
 export const GetRooms = (): Room[] => {
     return GetClient().getRooms();
 }
+
+// export const GetReactiveRooms = (): Record<string, Room> => {
+//     return GetClient().getReactiveRooms();
+// }

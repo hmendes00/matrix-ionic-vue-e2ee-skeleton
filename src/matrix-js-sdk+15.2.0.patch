@@ -1,0 +1,388 @@
+# diff --git a/node_modules/matrix-js-sdk/dist/browser-matrix.js b/node_modules/matrix-js-sdk/dist/browser-matrix.js
+# index 5f570d6..be7e177 100644
+# --- a/node_modules/matrix-js-sdk/dist/browser-matrix.js
+# +++ b/node_modules/matrix-js-sdk/dist/browser-matrix.js
+# @@ -18291,6 +18291,9 @@ class MatrixClient extends events_1.EventEmitter {
+#      getRooms() {
+#          return this.store.getRooms();
+#      }
+# +    getReactiveRooms() {
+# +        return this.store.getReactiveRooms();
+# +    }
+#      /**
+#       * Retrieve all rooms that should be displayed to the user
+#       * This is essentially getRooms() with some rooms filtered out, eg. old versions
+# diff --git a/node_modules/matrix-js-sdk/lib/client.js b/node_modules/matrix-js-sdk/lib/client.js
+# index e59446c..a7ae099 100644
+# --- a/node_modules/matrix-js-sdk/lib/client.js
+# +++ b/node_modules/matrix-js-sdk/lib/client.js
+# @@ -2528,6 +2528,11 @@ class MatrixClient extends _events.EventEmitter {
+#    getRooms() {
+#      return this.store.getRooms();
+#    }
+# +
+# +  getReactiveRooms() {
+# +    return this.store.getReactiveRooms();
+# +  }
+# +
+#    /**
+#     * Retrieve all rooms that should be displayed to the user
+#     * This is essentially getRooms() with some rooms filtered out, eg. old versions
+# diff --git a/node_modules/matrix-js-sdk/src/client.ts b/node_modules/matrix-js-sdk/src/client.ts
+# index 84602b4..b843abd 100644
+# --- a/node_modules/matrix-js-sdk/src/client.ts
+# +++ b/node_modules/matrix-js-sdk/src/client.ts
+# @@ -20,34 +20,51 @@ limitations under the License.
+#   */
+ 
+#  import { EventEmitter } from "events";
+# -import { ISyncStateData, SyncApi } from "./sync";
+# -import { EventStatus, IContent, IDecryptOptions, IEvent, MatrixEvent } from "./models/event";
+# -import { StubStore } from "./store/stub";
+# -import { createNewMatrixCall, MatrixCall } from "./webrtc/call";
+# -import { Filter, IFilterDefinition } from "./filter";
+# -import { CallEventHandler } from './webrtc/callEventHandler';
+# -import * as utils from './utils';
+# -import { sleep } from './utils';
+# -import { Group } from "./models/group";
+# -import { Direction, EventTimeline } from "./models/event-timeline";
+# -import { IActionsObject, PushProcessor } from "./pushprocessor";
+# -import { AutoDiscovery, AutoDiscoveryAction } from "./autodiscovery";
+# -import * as olmlib from "./crypto/olmlib";
+# -import { decodeBase64, encodeBase64 } from "./crypto/olmlib";
+# -import { IExportedDevice as IOlmDevice } from "./crypto/OlmDevice";
+# -import { ReEmitter } from './ReEmitter';
+# -import { IRoomEncryption, RoomList } from './crypto/RoomList';
+# -import { logger } from './logger';
+# -import { SERVICE_TYPES } from './service-types';
+# +import { ReadStream } from "fs";
+# +import type Request from "request";
+#  import {
+# -    MatrixError,
+# -    MatrixHttpApi,
+# -    PREFIX_IDENTITY_V2,
+# -    PREFIX_MEDIA_R0,
+# -    PREFIX_R0,
+# -    PREFIX_UNSTABLE,
+# -    retryNetworkOperation,
+# -} from "./http-api";
+# +    EventType,
+# +    MsgType,
+# +    RelationType,
+# +    RoomCreateTypeField,
+# +    RoomType,
+# +    UNSTABLE_MSC3088_ENABLED,
+# +    UNSTABLE_MSC3088_PURPOSE,
+# +    UNSTABLE_MSC3089_TREE_SUBTYPE
+# +} from "./@types/event";
+# +import { IIdentityServerProvider } from "./@types/IIdentityServerProvider";
+# +import { IAbortablePromise, IdServerUnbindResult, IImageInfo, Preset, Visibility } from "./@types/partials";
+# +import { IPusher, IPusherRequest, IPushRules, PushRuleAction, PushRuleKind, RuleId } from "./@types/PushRules";
+# +import {
+# +    IAddThreePidOnlyBody,
+# +    IBindThreePidBody,
+# +    ICreateRoomOpts,
+# +    IEventSearchOpts,
+# +    IGuestAccessOpts,
+# +    IJoinRoomOpts,
+# +    IPaginateOpts,
+# +    IPresenceOpts,
+# +    IRedactOpts,
+# +    IRoomDirectoryOptions,
+# +    ISearchOpts,
+# +    ISendEventResponse,
+# +    IUploadOpts
+# +} from "./@types/requests";
+# +import {
+# +    IEventWithRoomId,
+# +    ISearchRequestBody,
+# +    ISearchResponse,
+# +    ISearchResults,
+# +    IStateEventWithRoomId,
+# +    SearchOrderBy
+# +} from "./@types/search";
+# +import { ISignatures } from "./@types/signed";
+# +import { IHierarchyRoom, ISpaceSummaryEvent, ISpaceSummaryRoom } from "./@types/spaces";
+# +import { ISynapseAdminDeactivateResponse, ISynapseAdminWhoisResponse } from "./@types/synapse";
+# +import { IThreepid } from "./@types/threepids";
+# +import { AutoDiscovery, AutoDiscoveryAction } from "./autodiscovery";
+# +import * as ContentHelpers from "./content-helpers";
+# +import { getHttpUriForMxc } from "./content-repo";
+#  import {
+#      Crypto,
+#      fixBackupKey,
+# @@ -55,97 +72,80 @@ import {
+#      ICheckOwnCrossSigningTrustOpts,
+#      IMegolmSessionData,
+#      isCryptoAvailable,
+# -    VerificationMethod,
+# +    VerificationMethod
+#  } from './crypto';
+# -import { DeviceInfo, IDevice } from "./crypto/deviceinfo";
+# -import { decodeRecoveryKey } from './crypto/recoverykey';
+# -import { keyFromAuthData } from './crypto/key_passphrase';
+# -import { User } from "./models/user";
+# -import { getHttpUriForMxc } from "./content-repo";
+# -import { SearchResult } from "./models/search-result";
+# +import {
+# +    CrossSigningKey,
+# +    IAddSecretStorageKeyOpts,
+# +    ICreateSecretStorageOpts,
+# +    IEncryptedEventInfo,
+# +    IImportRoomKeysOpts,
+# +    IRecoveryKey,
+# +    ISecretStorageKeyInfo
+# +} from "./crypto/api";
+# +import { BackupManager, IKeyBackup, IKeyBackupCheck, IPreparedKeyBackupVersion, TrustInfo } from "./crypto/backup";
+# +import { CrossSigningInfo, DeviceTrustLevel, ICacheCallbacks, UserTrustLevel } from "./crypto/CrossSigning";
+#  import {
+#      DEHYDRATION_ALGORITHM,
+#      IDehydratedDevice,
+#      IDehydratedDeviceKeyInfo,
+#      IDeviceKeys,
+# -    IOneTimeKey,
+# +    IOneTimeKey
+#  } from "./crypto/dehydration";
+# +import { DeviceInfo, IDevice } from "./crypto/deviceinfo";
+#  import {
+#      IKeyBackupInfo,
+#      IKeyBackupPrepareOpts,
+#      IKeyBackupRestoreOpts,
+#      IKeyBackupRestoreResult,
+#      IKeyBackupRoomSessions,
+# -    IKeyBackupSession,
+# +    IKeyBackupSession
+#  } from "./crypto/keybackup";
+# -import { IIdentityServerProvider } from "./@types/IIdentityServerProvider";
+# -import type Request from "request";
+# -import { MatrixScheduler } from "./scheduler";
+# -import { IAuthData, ICryptoCallbacks, IMinimalEvent, IRoomEvent, IStateEvent, NotificationCountType } from "./matrix";
+# +import { keyFromAuthData } from './crypto/key_passphrase';
+# +import { IExportedDevice as IOlmDevice } from "./crypto/OlmDevice";
+# +import * as olmlib from "./crypto/olmlib";
+# +import { decodeBase64, encodeBase64 } from "./crypto/olmlib";
+# +import { decodeRecoveryKey } from './crypto/recoverykey';
+# +import { IRoomEncryption, RoomList } from './crypto/RoomList';
+# +import { ISecretRequest } from "./crypto/SecretStorage";
+# +import { CryptoStore } from "./crypto/store/base";
+# +import { VerificationBase as Verification } from "./crypto/verification/Base";
+# +import { VerificationRequest } from "./crypto/verification/request/VerificationRequest";
+# +import { EventMapper, eventMapperFor, MapperOpts } from "./event-mapper";
+# +import { Filter, IFilterDefinition } from "./filter";
+#  import {
+# -    CrossSigningKey,
+# -    IAddSecretStorageKeyOpts,
+# -    ICreateSecretStorageOpts,
+# -    IEncryptedEventInfo,
+# -    IImportRoomKeysOpts,
+# -    IRecoveryKey,
+# -    ISecretStorageKeyInfo,
+# -} from "./crypto/api";
+# -import { SyncState } from "./sync.api";
+# +    MatrixError,
+# +    MatrixHttpApi,
+# +    PREFIX_IDENTITY_V2,
+# +    PREFIX_MEDIA_R0,
+# +    PREFIX_R0,
+# +    PREFIX_UNSTABLE,
+# +    retryNetworkOperation
+# +} from "./http-api";
+# +import { logger } from './logger';
+# +import { IAuthData, ICryptoCallbacks, IMinimalEvent, IRoomEvent, IStateEvent, NotificationCountType } from "./matrix";
+# +import { EventStatus, IContent, IDecryptOptions, IEvent, MatrixEvent } from "./models/event";
+# +import { Direction, EventTimeline } from "./models/event-timeline";
+#  import { EventTimelineSet } from "./models/event-timeline-set";
+# -import { VerificationRequest } from "./crypto/verification/request/VerificationRequest";
+# -import { VerificationBase as Verification } from "./crypto/verification/Base";
+# -import * as ContentHelpers from "./content-helpers";
+# -import { CrossSigningInfo, DeviceTrustLevel, ICacheCallbacks, UserTrustLevel } from "./crypto/CrossSigning";
+# +import { Group } from "./models/group";
+# +import { DEFAULT_TREE_POWER_LEVELS_TEMPLATE, MSC3089TreeSpace } from "./models/MSC3089TreeSpace";
+#  import { Room } from "./models/room";
+# -import {
+# -    IAddThreePidOnlyBody,
+# -    IBindThreePidBody,
+# -    ICreateRoomOpts,
+# -    IEventSearchOpts,
+# -    IGuestAccessOpts,
+# -    IJoinRoomOpts,
+# -    IPaginateOpts,
+# -    IPresenceOpts,
+# -    IRedactOpts,
+# -    IRoomDirectoryOptions,
+# -    ISearchOpts,
+# -    ISendEventResponse,
+# -    IUploadOpts,
+# -} from "./@types/requests";
+# -import {
+# -    EventType,
+# -    MsgType,
+# -    RelationType,
+# -    RoomCreateTypeField,
+# -    RoomType,
+# -    UNSTABLE_MSC3088_ENABLED,
+# -    UNSTABLE_MSC3088_PURPOSE,
+# -    UNSTABLE_MSC3089_TREE_SUBTYPE,
+# -} from "./@types/event";
+# -import { IAbortablePromise, IdServerUnbindResult, IImageInfo, Preset, Visibility } from "./@types/partials";
+# -import { EventMapper, eventMapperFor, MapperOpts } from "./event-mapper";
+# +import { SearchResult } from "./models/search-result";
+# +import { User } from "./models/user";
+# +import { IActionsObject, PushProcessor } from "./pushprocessor";
+#  import { randomString } from "./randomstring";
+# -import { ReadStream } from "fs";
+# -import { WebStorageSessionStore } from "./store/session/webstorage";
+# -import { BackupManager, IKeyBackup, IKeyBackupCheck, IPreparedKeyBackupVersion, TrustInfo } from "./crypto/backup";
+# -import { DEFAULT_TREE_POWER_LEVELS_TEMPLATE, MSC3089TreeSpace } from "./models/MSC3089TreeSpace";
+# -import { ISignatures } from "./@types/signed";
+# +import { ReEmitter } from './ReEmitter';
+# +import { MatrixScheduler } from "./scheduler";
+# +import { SERVICE_TYPES } from './service-types';
+#  import { IStore } from "./store";
+# -import { ISecretRequest } from "./crypto/SecretStorage";
+# -import {
+# -    IEventWithRoomId,
+# -    ISearchRequestBody,
+# -    ISearchResponse,
+# -    ISearchResults,
+# -    IStateEventWithRoomId,
+# -    SearchOrderBy,
+# -} from "./@types/search";
+# -import { ISynapseAdminDeactivateResponse, ISynapseAdminWhoisResponse } from "./@types/synapse";
+# -import { IHierarchyRoom, ISpaceSummaryEvent, ISpaceSummaryRoom } from "./@types/spaces";
+# -import { IPusher, IPusherRequest, IPushRules, PushRuleAction, PushRuleKind, RuleId } from "./@types/PushRules";
+# -import { IThreepid } from "./@types/threepids";
+# -import { CryptoStore } from "./crypto/store/base";
+# +import { WebStorageSessionStore } from "./store/session/webstorage";
+# +import { StubStore } from "./store/stub";
+# +import { ISyncStateData, SyncApi } from "./sync";
+# +import { SyncState } from "./sync.api";
+# +import * as utils from './utils';
+# +import { sleep } from './utils';
+# +import { createNewMatrixCall, MatrixCall } from "./webrtc/call";
+# +import { CallEventHandler } from './webrtc/callEventHandler';
+#  import { MediaHandler } from "./webrtc/mediaHandler";
+ 
+#  export type Store = IStore;
+# @@ -3017,6 +3017,14 @@ export class MatrixClient extends EventEmitter {
+#          return this.store.getRooms();
+#      }
+ 
+# +    /**
+# +     * Retrieve reactive object with all known rooms.
+# +     * @return {Room[]} A list of rooms, or an empty list if there is no data store.
+# +     */
+# +     public getReactiveRooms(): Room[] {
+# +        return this.store.getReactiveRooms();
+# +    }
+# +
+#      /**
+#       * Retrieve all rooms that should be displayed to the user
+#       * This is essentially getRooms() with some rooms filtered out, eg. old versions
+# diff --git a/node_modules/matrix-js-sdk/src/store/index.ts b/node_modules/matrix-js-sdk/src/store/index.ts
+# index ad25a1c..259cf05 100644
+# --- a/node_modules/matrix-js-sdk/src/store/index.ts
+# +++ b/node_modules/matrix-js-sdk/src/store/index.ts
+# @@ -15,14 +15,14 @@ limitations under the License.
+#  */
+ 
+#  import { EventType } from "../@types/event";
+# +import { IStartClientOpts } from "../client";
+# +import { Filter } from "../filter";
+# +import { IEvent, MatrixEvent } from "../models/event";
+#  import { Group } from "../models/group";
+#  import { Room } from "../models/room";
+# -import { User } from "../models/user";
+# -import { IEvent, MatrixEvent } from "../models/event";
+# -import { Filter } from "../filter";
+#  import { RoomSummary } from "../models/room-summary";
+# -import { IMinimalEvent, IGroups, IRooms, ISyncResponse } from "../sync-accumulator";
+# -import { IStartClientOpts } from "../client";
+# +import { User } from "../models/user";
+# +import { IGroups, IMinimalEvent, IRooms, ISyncResponse } from "../sync-accumulator";
+ 
+#  export interface ISavedSync {
+#      nextBatch: string;
+# @@ -94,6 +94,12 @@ export interface IStore {
+#       */
+#      getRooms(): Room[];
+ 
+# +    /**
+# +     * No-op.
+# +     * @return {Array} An empty array.
+# +     */
+# +     getReactiveRooms(): Room[];
+# +
+#      /**
+#       * Permanently delete a room.
+#       * @param {string} roomId
+# diff --git a/node_modules/matrix-js-sdk/src/store/memory.ts b/node_modules/matrix-js-sdk/src/store/memory.ts
+# index 7effd9f..87919d5 100644
+# --- a/node_modules/matrix-js-sdk/src/store/memory.ts
+# +++ b/node_modules/matrix-js-sdk/src/store/memory.ts
+# @@ -20,16 +20,16 @@ limitations under the License.
+#   */
+ 
+#  import { EventType } from "../@types/event";
+# +import { Filter } from "../filter";
+# +import { IEvent, MatrixEvent } from "../models/event";
+#  import { Group } from "../models/group";
+#  import { Room } from "../models/room";
+# -import { User } from "../models/user";
+# -import { IEvent, MatrixEvent } from "../models/event";
+# -import { RoomState } from "../models/room-state";
+#  import { RoomMember } from "../models/room-member";
+# -import { Filter } from "../filter";
+# -import { ISavedSync, IStore } from "./index";
+# +import { RoomState } from "../models/room-state";
+#  import { RoomSummary } from "../models/room-summary";
+# +import { User } from "../models/user";
+#  import { ISyncResponse } from "../sync-accumulator";
+# +import { ISavedSync, IStore } from "./index";
+ 
+#  function isValidFilterId(filterId: string): boolean {
+#      const isValidStr = typeof filterId === "string" &&
+# @@ -179,6 +179,43 @@ export class MemoryStore implements IStore {
+#          return Object.values(this.rooms);
+#      }
+ 
+# +    /**
+# +     * Retrieve a reactive object for all known rooms
+# +     */
+# +    public getReactiveRooms(): Room[] {
+# +        const handler = function () {
+# +            return {
+# +                get: function (obj, prop) {
+# +                    if (['[object Object]', '[object Array]'].indexOf(Object.prototype.toString.call(obj[prop])) > -1) {
+# +                        return new Proxy(obj[prop], handler());
+# +                    }
+# +                    return obj[prop];
+# +                },
+# +                set: function (obj, prop, value) {
+# +                    obj[prop] = value;
+# +                    return true;
+# +                },
+# +                deleteProperty: function (obj, prop) {
+# +                    delete obj[prop];
+# +                    return true;
+# +                }
+# +            };
+# +        };
+# +
+# +        let reactiveRooms = new Proxy(this.rooms, handler());
+# +
+# +        Object.defineProperty(this, 'data', {
+# +            get: function () {
+# +                return reactiveRooms;
+# +            },
+# +            set: function (data) {
+# +                reactiveRooms = new Proxy(data, handler());
+# +                return true;
+# +            }
+# +        });
+# +
+# +        return reactiveRooms;
+# +    }
+#      /**
+#       * Permanently delete a room.
+#       * @param {string} roomId

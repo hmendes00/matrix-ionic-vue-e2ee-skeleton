@@ -173,16 +173,7 @@ export const PrepareSync = () => {
         switch (state) {
             case 'PREPARED':
                 SetupEventBindings();
-                // eslint-disable-next-line no-case-declarations
-                // const _rooms = _client.getRooms();
                 await _client.uploadKeys();
-                // eslint-disable-next-line no-case-declarations
-                // const verifications = new Array<Promise<void>>();
-                // for(const room of _rooms) {
-                //     verifications.push(VerifyMembersDevices(room));
-                // }
-
-                // await Promise.all(verifications);
                 MatrixService.firstSyncDone.value = true;
                 _client.removeListener('sync', PrepareSync);
                 break;

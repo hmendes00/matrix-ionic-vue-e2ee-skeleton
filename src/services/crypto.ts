@@ -1,4 +1,5 @@
 
+import { crossSigningCallbacks } from '@/helpers/ssss';
 import router from '@/router';
 import { ICreateClientOpts, IndexedDBCryptoStore, MatrixClient } from 'matrix-js-sdk';
 import { verificationMethods } from 'matrix-js-sdk/lib/crypto';
@@ -27,6 +28,14 @@ interface CryptoServiceInterface {
 const verifyDevice = async (client: MatrixClient, userId: string, deviceId: string) => {
     await client.setDeviceKnown(userId, deviceId, true);
     await client.setDeviceVerified(userId, deviceId, true);
+}
+
+/**
+ * Check (by userId) if device is verified
+ */
+ const IsDeviceVerified = (client: MatrixClient): boolean => {
+    const device = client.getStoredDevice(client.getUserId(), client.getDeviceId());
+    return !device.isUnverified();
 }
 
 export const CryptoService: CryptoServiceInterface = {
@@ -152,27 +161,39 @@ const StartVerification = async (request: VerificationRequest): Promise<Verifica
     };
 }
 
-export const SendVerificationRequest = async (client: MatrixClient) => {
+export const SendVerificationRequestIfUnverified = async (client: MatrixClient) => {
+  if(!CryptoService.isDeviceVerified() || !IsDeviceVerified(client)) {
     currentVerificationRequest = await client.requestVerification(client.getUserId());
-    console.log('VERIFICATION', currentVerificationRequest);
     CryptoService.verificationChallengeObj = StartVerification(currentVerificationRequest);
+
+  }
 }
 
 /**
- * Check (by userId) if device is verified
+ * initialize support for e2ee and download and stores own keys 
+ * @param client - Current active matrix client
+ * @param shouldSendVerification - if true, and device is unverified, sends verification request to an already active device (to start emoji match).
+ * defaults to false.
  */
- const IsDeviceVerified = (client: MatrixClient, deviceId: string, userId: string): boolean => {
-    const device = client.getStoredDevice(userId, deviceId);
-    console.log(device, device.verified)
-    return !device.isUnverified();
-}
-
-export const SetupCryptoBasics = async (client: MatrixClient, deviceId: string) => {
+export const SetupCryptoBasics = async (client: MatrixClient, shouldSendVerification = false) => {
   await client.initCrypto();
   await DownloadMyKeys(client);
-  if(!CryptoService.isDeviceVerified()) {
-      SendVerificationRequest(client);
+  if(shouldSendVerification) {
+    SendVerificationRequestIfUnverified(client);
   }
+}
+
+/**
+ * Startup crypto store, adds cryptoCallbacks for crossSigning and generate options for new client instance
+ * @param client - Current active matrix client
+ * @param deviceId - deviceId
+ * @returns Returns the generated client options ready for e2ee
+ */
+export const PrepareCryptoBasics = async (client: MatrixClient, deviceId: string): Promise<ICreateClientOpts> => {
+  await GetCryptoStore().startup();
+  const clientOpts = GenerateClientOptsEncryption(client, deviceId);
+  Object.assign(clientOpts.cryptoCallbacks, crossSigningCallbacks);
+  return clientOpts;
 }
 
 
